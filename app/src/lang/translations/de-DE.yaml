@@ -22,6 +22,7 @@ create_webhook: Webhook erstellen
 invite_users: Benutzer einladen
 email_examples: 'admin@example.com, user@example.com...'
 invite: Einladen
+email_already_invited: E-Mail "{email}" wurde bereits eingeladen
 emails: E-Mails
 connection_excellent: Ausgezeichnete Verbindung
 connection_good: Gute Verbindung
@@ -81,9 +82,13 @@ validationError:
   nnull: Der Wert darf nicht leer sein
   required: Wert erforderlich
   unique: Wert muss eindeutig sein
+  regex: Wert hat nicht das richtige Format
 all_access: Zugriff auf alles
 no_access: Kein Zugriff
 use_custom: Benutzerdefiniert
+nullable: Nullbar
+allow_null_value: NULL-Wert erlauben
+enter_value_to_replace_nulls: Bitte geben Sie einen neuen Wert ein, um alle NULLs zu ersetzen, die derzeit in diesem Feld liegen.
 field_standard: Standard
 field_presentation: Darstellung & Aliasse
 field_file: Eine Datei
@@ -314,6 +319,10 @@ save_and_create_new: Speichern und Neues anlegen
 save_and_stay: Speichern und Bleiben
 save_as_copy: Als Kopie speichern
 add_existing: Vorhandene hinzufügen
+creating_items: Elemente erstellen
+enable_create_button: Knopf zum Erstellen aktivieren
+selecting_items: Elemente auswählen
+enable_select_button: Knopf zum Auswählen aktivieren
 comments: Kommentare
 no_comments: Noch keine Kommentare
 click_to_expand: Zum Erweitern klicken
@@ -352,7 +361,6 @@ users: Benutzer
 activity: Aktivität
 webhooks: Webhooks
 field_width: Feldbreite
-add_a_new_item: Neues Element hinzufügen...
 add_filter: Filter hinzufügen
 upper_limit: Obere Grenze...
 lower_limit: Untere Grenze...
@@ -396,6 +404,8 @@ errors:
   ITEM_NOT_FOUND: Element nicht gefunden
   ROUTE_NOT_FOUND: Nicht gefunden
   RECORD_NOT_UNIQUE: Doppelter Wert erkannt
+  USER_SUSPENDED: Benutzer gesperrt
+  CONTAINS_NULL_VALUES: Feld enthält NULL-Werte
   UNKNOWN: Unerwarteter Fehler
 value_hashed: Wert sicher gehashed
 bookmark_name: Name des Lesezeichens...
@@ -472,6 +482,8 @@ operators:
   has: Enthält einige dieser Schlüssel
 loading: Wird geladen...
 drop_to_upload: Zum Hochladen ablegen
+item: Element
+items: Elemente
 upload_file: Datei hochladen
 upload_file_indeterminate: Datei wird hochgeladen...
 upload_file_success: Datei wurde hochgeladen
@@ -530,6 +542,7 @@ display_text: Text anzeigen
 display_text_placeholder: Anzeigetext eingeben...
 tooltip: Tooltip
 tooltip_placeholder: Tooltip eingeben...
+unlimited: Unlimitiert
 open_link_in: Link öffnen in
 new_tab: Neuer Tab
 current_tab: Aktueller Tab
@@ -590,6 +603,8 @@ adding_user: Benutzer hinzufügen
 unknown_user: Unbekannter Benutzer
 creating_in: 'Erstelle Element in {collection}'
 editing_in: 'Bearbeite Element in {collection}'
+creating_unit: 'Erstelle {unit}'
+editing_unit: 'Bearbeite {unit}'
 editing_in_batch: '{count} Elemente werden bearbeitet'
 no_options_available: Keine Optionen verfügbar
 settings_data_model: Datenmodell
@@ -651,7 +666,7 @@ batch_delete_confirm: >-
 cancel: Abbrechen
 collection: Sammlung
 collections: Sammlungen
-singleton: Singleton
+singleton: Einzelnes Element
 singleton_label: Als einzelnes Objekt behandeln
 system_fields_locked: Systemfelder sind gesperrt und können nicht bearbeitet werden
 fields:
@@ -671,13 +686,15 @@ fields:
     note: Notiz
     display_template: Anzeigevorlage
     hidden: Ausgeblendet
-    singleton: Singleton
-    translations: Übersetzungen des Namens der Sammlung
+    singleton: Einzelnes Element
+    translations: Namens-Übersetzungen der Sammlung
     archive_app_filter: Archivierungs-App-Filter
     archive_value: Archivierungswert
     unarchive_value: Dearchivierungswert
     sort_field: Sortierfeld
+    accountability: Aktivitäts- und Änderungsverfolgung
   directus_files:
+    $thumbnail: Miniaturansicht
     title: Titel
     description: Beschreibung
     tags: Stichwörter
@@ -736,7 +753,7 @@ fields:
     icon: Sammlungsicon
     note: Notiz
     hidden: Ausgeblendet
-    singleton: Singleton
+    singleton: Einzelnes Element
     translation: Feldnamen-Übersetzungen
     display_template: Vorlage
   directus_roles:
@@ -750,6 +767,11 @@ fields:
     users: Benutzer in Rolle
     module_list: Modulnavigation
     collection_list: Sammlungsnavigation
+field_options:
+  directus_collections:
+    track_activity_revisions: Verfolge Aktivitäten und Änderungen
+    only_track_activity: Nur Aktivitäten verfolgen
+    do_not_track_anything: Nichts verfolgen
 no_fields_in_collection: 'Es gibt noch keine Felder in "{collection}"'
 do_nothing: Keine Aktion
 generate_and_save_uuid: UUID generieren und speichern
@@ -820,6 +842,7 @@ template: Vorlage
 translation: Übersetzung
 value: Wert
 view_project: Projekt anzeigen
+weeks: { }
 report_error: Fehler melden
 interfaces:
   button-links:
@@ -951,7 +974,7 @@ interfaces:
     repeater: Repeater
     description: Mehrere Einträge derselben Struktur erstellen
     edit_fields: Felder bearbeiten
-    add_label: 'Label "Neue Zeile hinzufügen"'
+    add_label: 'Neues Element erstellen'
     field_name_placeholder: Feldnamen eingeben...
     field_note_placeholder: Feldnotiz eingeben...
   slider:
@@ -982,6 +1005,8 @@ interfaces:
     trim_label: Anfang und Ende kürzen
     mask: Maskiert
     mask_label: Tatsächlichen Wert ausblenden
+    clear: Gelöschter Wert
+    clear_label: Als leeren String abspeichern
   textarea:
     textarea: Textfeld
     description: Mehrzeiligen Klartext eingeben

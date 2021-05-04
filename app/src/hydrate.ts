@@ -1,20 +1,19 @@
+import { Language } from '@/lang';
+import { setLanguage } from '@/lang/set-language';
+import { register as registerModules, unregister as unregisterModules } from '@/modules/register';
 import {
 	useAppStore,
 	useCollectionsStore,
 	useFieldsStore,
-	useUserStore,
-	useRequestsStore,
-	usePresetsStore,
-	useSettingsStore,
-	useServerStore,
 	useLatencyStore,
-	useRelationsStore,
 	usePermissionsStore,
+	usePresetsStore,
+	useRelationsStore,
+	useRequestsStore,
+	useServerStore,
+	useSettingsStore,
+	useUserStore,
 } from '@/stores';
-import { register as registerModules, unregister as unregisterModules } from '@/modules/register';
-
-import { Language } from '@/lang';
-import { setLanguage } from '@/lang/set-language';
 
 type GenericStore = {
 	id: string;
@@ -37,12 +36,12 @@ export function useStores(
 		useRelationsStore,
 		usePermissionsStore,
 	]
-) {
+): GenericStore[] {
 	return stores.map((useStore) => useStore()) as GenericStore[];
 }
 
 /* istanbul ignore next: useStores has a test already */
-export async function hydrate(stores = useStores()) {
+export async function hydrate(stores = useStores()): Promise<void> {
 	const appStore = useAppStore();
 	const userStore = useUserStore();
 
@@ -61,8 +60,8 @@ export async function hydrate(stores = useStores()) {
 		await userStore.hydrate();
 
 		if (userStore.state.currentUser?.role) {
-			await registerModules();
 			await Promise.all(stores.filter(({ id }) => id !== 'userStore').map((store) => store.hydrate?.()));
+			await registerModules();
 			await setLanguage((userStore.state.currentUser?.language as Language) || 'en-US');
 		}
 	} catch (error) {
@@ -75,7 +74,7 @@ export async function hydrate(stores = useStores()) {
 }
 
 /* istanbul ignore next: useStores has a test already */
-export async function dehydrate(stores = useStores()) {
+export async function dehydrate(stores = useStores()): Promise<void> {
 	const appStore = useAppStore();
 
 	if (appStore.state.hydrated === false) return;

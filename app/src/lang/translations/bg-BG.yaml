@@ -22,6 +22,7 @@ create_webhook: Създаване на уеб-кука
 invite_users: Покана към потребители
 email_examples: 'admin@example.com, potrebitel@example.com...'
 invite: Покана
+email_already_invited: Вече е изпратена покана в пощата на "{email}"
 emails: E-пощи
 connection_excellent: Връзката е отлична
 connection_good: Връзката е добра
@@ -81,6 +82,7 @@ validationError:
   nnull: Стойността не трябва да е null
   required: Изисква се стойност
   unique: Изисква се уникална стойност
+  regex: Стойността е неправилно форматирана
 all_access: Пълен достъп
 no_access: Без достъп
 use_custom: Персонализиран
@@ -127,7 +129,7 @@ field_in_collection: '{field} ({collection})'
 reset_page_preferences: Нулиране на предпочитанията за страницата
 hidden_field: Скрито поле
 hidden_on_detail: Скриване в детайлния изглед
-disabled_editing_value: Без промени по стойността
+disabled_editing_value: Без възможност за редакция
 key: Ключ
 alias: Псевдоним
 bigInteger: Голямо цяло число
@@ -149,8 +151,8 @@ create_translations: Създаване на преводи
 auto_refresh: Автоматично опресняване
 refresh_interval: Интервал за опресняване
 no_refresh: Да не се опреснява
-refresh_interval_seconds: Моментално опресняване | На всяка секунда | На всеки {seconds} секунди
-refresh_interval_minutes: Всяка минута | На всеки {minutes} минути
+refresh_interval_seconds: Моментално опресняване | Всяка секунда | Всеки {seconds} секунди
+refresh_interval_minutes: Всяка минута | Всеки {minutes} минути
 auto_generate: Автоматично генериране
 this_will_auto_setup_fields_relations: Автоматично настройване на задължителните полета и релации.
 click_here: Натиснете тук
@@ -314,6 +316,10 @@ save_and_create_new: Запазване и преминаване към нов
 save_and_stay: Запазване и оставане
 save_as_copy: Запазване като копие
 add_existing: Добавяне на съществуващ
+creating_items: Създаване на записи
+enable_create_button: Включване на бутона за създаване
+selecting_items: Избор на записи
+enable_select_button: Включване на бутона за избор
 comments: Коментари
 no_comments: Все още няма коментари
 click_to_expand: Натиснете за разширяване
@@ -352,7 +358,6 @@ users: Потребители
 activity: Активности
 webhooks: Уеб-куки
 field_width: Ширина на полето
-add_a_new_item: Добавяне на нов запис...
 add_filter: Добавяне на филтър
 upper_limit: Горна граница...
 lower_limit: Долна граница...
@@ -396,6 +401,7 @@ errors:
   ITEM_NOT_FOUND: Записът не е намерен
   ROUTE_NOT_FOUND: Не е намерен
   RECORD_NOT_UNIQUE: Вече съществува такава стойност
+  USER_SUSPENDED: Потребителя е деактивиран
   UNKNOWN: Неочаквана грешка
 value_hashed: Хеширана стойност
 bookmark_name: Име на отметка...
@@ -435,7 +441,7 @@ show_hidden_collections: Показване на скритите колекци
 hide_hidden_collections: Скриване на скритите колекции
 unmanaged_collections: Неконфигурирани колекции
 system_collections: Системни колекции
-placeholder: Заместител (placeholder)
+placeholder: Подсказка
 icon_left: Икона вляво
 icon_right: Икона вдясно
 count_other_revisions: '{count} други ревизии'
@@ -472,6 +478,8 @@ operators:
   has: Съдържа някои от
 loading: Зареждане...
 drop_to_upload: Пускане за качване
+item: Запис
+items: Записи
 upload_file: Качване на файл
 upload_file_indeterminate: Файлът се качва...
 upload_file_success: Файлът е качен
@@ -530,6 +538,7 @@ display_text: Текст за показване
 display_text_placeholder: Въвеждане на текст за показване...
 tooltip: Подсказка
 tooltip_placeholder: Въвеждане на подсказка...
+unlimited: Неограничен
 open_link_in: Отваряне не връзката в
 new_tab: Нов таб
 current_tab: Текущ таб
@@ -590,6 +599,8 @@ adding_user: Добавяне на потребител
 unknown_user: Неизвестен потребител
 creating_in: 'Създаване на запис в {collection}'
 editing_in: 'Редактиране на запис от {collection}'
+creating_unit: 'Създаване {unit}'
+editing_unit: 'Редактиране на {unit}'
 editing_in_batch: 'Масово редактиране {count} на записа'
 no_options_available: Не са налични опции
 settings_data_model: Модел на данни
@@ -677,7 +688,9 @@ fields:
     archive_value: Стойност при архивиране
     unarchive_value: Стойност при разархивиране
     sort_field: Поле за сортиране
+    accountability: Следене за активност и ревизии
   directus_files:
+    $thumbnail: Умалена картинка
     title: Заглавие
     description: Описание
     tags: Тагове
@@ -750,6 +763,11 @@ fields:
     users: Потребители към роля
     module_list: Модули
     collection_list: Навигация в колекции
+field_options:
+  directus_collections:
+    track_activity_revisions: Проследяване на активността и ревизиите
+    only_track_activity: Проследяване само на активността
+    do_not_track_anything: Без следене
 no_fields_in_collection: 'Все още няма полета в {collection}'
 do_nothing: Без действие
 generate_and_save_uuid: Генериране и запазване на UUID
@@ -935,7 +953,7 @@ interfaces:
     description: Показване на кратка бележка
     text: Въвеждане на бележката...
   numeric:
-    numeric: Числен
+    numeric: Числов
     description: Въвеждане на число
     minimum_value: Минимална стойност
     maximum_value: Максимална стойност
@@ -951,7 +969,7 @@ interfaces:
     repeater: Повторение
     description: Създаване на множество записи със същата структура
     edit_fields: Редактиране на полета
-    add_label: 'Етикет за "Добавяне на ред"'
+    add_label: 'Текст за "Създаване"'
     field_name_placeholder: Въвеждане име на полето...
     field_note_placeholder: Въвеждане бележка към полето...
   slider:
@@ -982,6 +1000,8 @@ interfaces:
     trim_label: Почистване на краищата от интервали
     mask: Маскиране
     mask_label: Скриване на истинската стойност
+    clear: Изчистване на стойност
+    clear_label: Запазване като празен стринг
   textarea:
     textarea: Поле за текст
     description: Въвеждане на чист текст на няколко реда
