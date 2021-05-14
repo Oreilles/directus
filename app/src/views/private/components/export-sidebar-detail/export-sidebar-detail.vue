@@ -13,6 +13,10 @@
 							text: $t('json'),
 							value: 'json',
 						},
+						{
+							text: $t('xml'),
+							value: 'xml',
+						},
 					]"
 					v-model="format"
 				/>
@@ -30,12 +34,17 @@
 
 <script lang="ts">
 import { defineComponent, ref, PropType } from '@vue/composition-api';
-import { Collection } from '@/types';
+import { Collection, Filter } from '@/types';
 import api from '@/api';
 import { getRootPath } from '@/utils/get-root-path';
+import filtersToQuery from '@/utils/filters-to-query';
 
 export default defineComponent({
 	props: {
+		filters: {
+			type: Array as PropType<Filter[]>,
+			default: () => [],
+		},
 		layoutQuery: {
 			type: Object,
 			default: () => ({}),
@@ -64,6 +73,8 @@ export default defineComponent({
 
 			if (format.value === 'csv') {
 				params.export = 'csv';
+			} else if (format.value === 'xml') {
+				params.export = 'xml';
 			} else {
 				params.export = 'json';
 			}
@@ -74,16 +85,24 @@ export default defineComponent({
 					...props.layoutQuery,
 				};
 
+				if (props.filters?.length) {
+					params = {
+						...params,
+						...filtersToQuery(props.filters),
+					};
+				}
+
 				if (props.searchQuery) {
 					params.search = props.searchQuery;
 				}
 			}
 
-			const qs = Object.keys(params)
-				.map((key) => `${key}=${params[key]}`)
-				.join('&');
+			const exportUrl = api.getUri({
+				url,
+				params,
+			});
 
-			window.open(`${url}?${qs}`);
+			window.open(exportUrl);
 		}
 	},
 });
