@@ -222,21 +222,14 @@ export class AuthorizationService {
 		const hasValidationRules =
 			isNil(permission.validation) === false && Object.keys(permission.validation ?? {}).length > 0;
 
-		const requiredColumns: SchemaOverview['collections'][string]['fields'][string][] = [];
-
-		for (const field of Object.values(this.schema.collections[collection].fields)) {
-			const specials = field?.special ?? [];
-
-			const hasGenerateSpecial = ['uuid', 'date-created', 'role-created', 'user-created'].some((name) =>
-				specials.includes(name)
+		const fieldsInCollection = Object.values(this.schema.collections[collection].fields);
+		const requiredColumns = fieldsInCollection.filter((field) => {
+			const specials = new Set(field.special ?? []);
+			const hasGenerateSpecial = ['uuid', 'date-created', 'role-created', 'user-created'].some((special) =>
+				specials.has(special)
 			);
-
-			const notNullable = field.nullable === false && hasGenerateSpecial === false;
-
-			if (notNullable) {
-				requiredColumns.push(field);
-			}
-		}
+			return !field.nullable && !hasGenerateSpecial;
+		});
 
 		if (hasValidationRules === false && requiredColumns.length === 0) {
 			return payloadWithPresets;

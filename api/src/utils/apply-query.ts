@@ -1,5 +1,6 @@
 import { Knex } from 'knex';
 import { clone, get, isPlainObject, set } from 'lodash';
+import { toArray } from '@directus/shared/utils';
 import { customAlphabet } from 'nanoid';
 import validate from 'uuid-validate';
 import { InvalidQueryException } from '../exceptions';
@@ -95,6 +96,7 @@ export function applyFilter(
 	collection: string,
 	subQuery = false
 ): void {
+	const geometryHelper = getGeometryHelper();
 	const relations: Relation[] = schema.relations;
 
 	const aliasMap: Record<string, string> = {};
@@ -262,9 +264,9 @@ export function applyFilter(
 				if (filterPath.length > 1) {
 					const columnName = getWhereColumn(filterPath, collection);
 					if (!columnName) continue;
-					applyFilterToQuery(columnName, filterOperator, filterValue, logical);
+					applyFilterToQuery(dbQuery, columnName, filterOperator, filterValue, logical);
 				} else {
-					applyFilterToQuery(`${collection}.${filterPath[0]}`, filterOperator, filterValue, logical);
+					applyFilterToQuery(dbQuery, `${collection}.${filterPath[0]}`, filterOperator, filterValue, logical);
 				}
 			} else if (subQuery === false) {
 				const pkField = `${collection}.${schema.collections[relation!.related_collection!].primary}`;
@@ -288,193 +290,53 @@ export function applyFilter(
 			}
 		}
 
-		function applyFilterToQuery(key: string, operator: string, compareValue: any, logical: 'and' | 'or' = 'and') {
-			// These operators don't rely on a value, and can thus be used without one (eg `?filter[field][_null]`)
-			if (operator === '_null' || (operator === '_nnull' && compareValue === false)) {
-				dbQuery[logical].whereNull(key);
+		function getWhereColumn(path: string[], collection: string, alias?: string): string | void {
+			/**
+			 * For M2A fields, the path can contain an optional collection scope <field>:<scope>
+			 */
+			const pathRoot = path[0].split(':')[0];
+
+			const relation = relations.find((relation) => {
+				return (
+					(relation.collection === collection && relation.field === pathRoot) ||
+					(relation.related_collection === collection && relation.meta?.one_field === pathRoot)
+				);
+			});
+
+			if (!relation) {
+				throw new InvalidQueryException(`"${collection}.${pathRoot}" is not a relational field`);
 			}
 
-			if (operator === '_nnull' || (operator === '_null' && compareValue === false)) {
-				dbQuery[logical].whereNotNull(key);
-			}
+			const relationType = getRelationType({ relation, collection: collection, field: pathRoot });
 
-			if (operator === '_empty' || (operator === '_nempty' && compareValue === false)) {
-				dbQuery[logical].andWhere((query) => {
-					query.where(key, '=', '');
-				});
-			}
+			alias = get(aliasMap, alias ? [alias, ...path] : path);
 
-			if (operator === '_nempty' || (operator === '_empty' && compareValue === false)) {
-				dbQuery[logical].andWhere((query) => {
-					query.where(key, '!=', '');
-				});
-			}
+			const remainingParts = path.slice(1);
 
-			// The following fields however, require a value to be run. If no value is passed, we
-			// ignore them. This allows easier use in GraphQL, where you wouldn't be able to
-			// conditionally build out your filter structure (#4471)
-			if (compareValue === undefined) return;
+			let parent: string;
 
-			if (Array.isArray(compareValue)) {
-				// Tip: when using a `[Type]` type in GraphQL, but don't provide the variable, it'll be
-				// reported as [undefined].
-				// We need to remove any undefined values, as they are useless
-				compareValue = compareValue.filter((val) => val !== undefined);
-			}
+			if (relationType === 'm2a') {
+				const pathScope = path[0].split(':')[1];
 
-			if (operator === '_eq') {
-				dbQuery[logical].where({ [key]: compareValue });
-			}
-
-			if (operator === '_neq') {
-				dbQuery[logical].whereNot({ [key]: compareValue });
-			}
-
-			if (operator === '_contains') {
-				dbQuery[logical].where(key, 'like', `%${compareValue}%`);
-			}
-
-			if (operator === '_ncontains') {
-				dbQuery[logical].whereNot(key, 'like', `%${compareValue}%`);
-			}
-
-			if (operator === '_starts_with') {
-				dbQuery[logical].where(key, 'like', `${compareValue}%`);
-			}
-
-			if (operator === '_nstarts_with') {
-				dbQuery[logical].whereNot(key, 'like', `${compareValue}%`);
-			}
-
-			if (operator === '_ends_with') {
-				dbQuery[logical].where(key, 'like', `%${compareValue}`);
-			}
-
-			if (operator === '_nends_with') {
-				dbQuery[logical].whereNot(key, 'like', `%${compareValue}`);
-			}
-
-			if (operator === '_gt') {
-				dbQuery[logical].where(key, '>', compareValue);
-			}
-
-			if (operator === '_gte') {
-				dbQuery[logical].where(key, '>=', compareValue);
-			}
-
-			if (operator === '_lt') {
-				dbQuery[logical].where(key, '<', compareValue);
-			}
-
-			if (operator === '_lte') {
-				dbQuery[logical].where(key, '<=', compareValue);
-			}
-
-			if (operator === '_in') {
-				let value = compareValue;
-				if (typeof value === 'string') value = value.split(',');
-
-				dbQuery[logical].whereIn(key, value as string[]);
-			}
-
-			if (operator === '_nin') {
-				let value = compareValue;
-				if (typeof value === 'string') value = value.split(',');
-
-				dbQuery[logical].whereNotIn(key, value as string[]);
-			}
-
-			if (operator === '_between') {
-				if (compareValue.length !== 2) return;
-
-				let value = compareValue;
-				if (typeof value === 'string') value = value.split(',');
-
-				dbQuery[logical].whereBetween(key, value);
-			}
-
-			if (operator === '_nbetween') {
-				if (compareValue.length !== 2) return;
-
-				let value = compareValue;
-				if (typeof value === 'string') value = value.split(',');
-
-				dbQuery[logical].whereNotBetween(key, value);
-			}
-
-			const geometryHelper = getGeometryHelper();
-
-			if (operator == '_intersects') {
-				dbQuery[logical].whereRaw(geometryHelper.intersects(key, compareValue));
-			}
-
-			if (operator == '_nintersects') {
-				dbQuery[logical].whereRaw(geometryHelper.nintersects(key, compareValue));
-			}
-			if (operator == '_intersects_bbox') {
-				dbQuery[logical].whereRaw(geometryHelper.intersects_bbox(key, compareValue));
-			}
-
-			if (operator == '_nintersects_bbox') {
-				dbQuery[logical].whereRaw(geometryHelper.nintersects_bbox(key, compareValue));
-			}
-		}
-
-		function getWhereColumn(path: string[], collection: string) {
-			return followRelation(path);
-
-			function followRelation(
-				pathParts: string[],
-				parentCollection: string = collection,
-				parentAlias?: string
-			): string | void {
-				/**
-				 * For M2A fields, the path can contain an optional collection scope <field>:<scope>
-				 */
-				const pathRoot = pathParts[0].split(':')[0];
-
-				const relation = relations.find((relation) => {
-					return (
-						(relation.collection === parentCollection && relation.field === pathRoot) ||
-						(relation.related_collection === parentCollection && relation.meta?.one_field === pathRoot)
+				if (!pathScope) {
+					throw new InvalidQueryException(
+						`You have to provide a collection scope when filtering on a many-to-any item`
 					);
-				});
-
-				if (!relation) {
-					throw new InvalidQueryException(`"${parentCollection}.${pathRoot}" is not a relational field`);
 				}
 
-				const relationType = getRelationType({ relation, collection: parentCollection, field: pathRoot });
+				parent = pathScope;
+			} else if (relationType === 'm2o') {
+				parent = relation.related_collection!;
+			} else {
+				parent = relation.collection;
+			}
 
-				const alias = get(aliasMap, parentAlias ? [parentAlias, ...pathParts] : pathParts);
+			if (remainingParts.length === 1) {
+				return `${alias || parent}.${remainingParts[0]}`;
+			}
 
-				const remainingParts = pathParts.slice(1);
-
-				let parent: string;
-
-				if (relationType === 'm2a') {
-					const pathScope = pathParts[0].split(':')[1];
-
-					if (!pathScope) {
-						throw new InvalidQueryException(
-							`You have to provide a collection scope when filtering on a many-to-any item`
-						);
-					}
-
-					parent = pathScope;
-				} else if (relationType === 'm2o') {
-					parent = relation.related_collection!;
-				} else {
-					parent = relation.collection;
-				}
-
-				if (remainingParts.length === 1) {
-					return `${alias || parent}.${remainingParts[0]}`;
-				}
-
-				if (remainingParts.length) {
-					return followRelation(remainingParts, parent, alias);
-				}
+			if (remainingParts.length) {
+				return getWhereColumn(remainingParts, parent, alias);
 			}
 		}
 	}
@@ -524,4 +386,105 @@ function getOperation(key: string, value: Record<string, any>): { operator: stri
 	}
 
 	return getOperation(Object.keys(value)[0], Object.values(value)[0]);
+}
+
+function applyFilterToQuery(
+	query: Knex.QueryBuilder<any, any>,
+	key: string,
+	operator: string,
+	compareValue: any,
+	logical: 'and' | 'or' = 'and'
+) {
+	// These operators don't rely on a value, and can thus be used without one (eg `?filter[field][_null]`)
+	switch (operator) {
+		case '_null':
+			query[logical][compareValue === false ? 'whereNotNull' : 'whereNull'](key);
+			break;
+		case '_nnull':
+			query[logical][compareValue === false ? 'whereNull' : 'whereNotNull'](key);
+			break;
+		case '_empty':
+			query[logical][compareValue === false ? 'whereNot' : 'where'](key, '=', '');
+			break;
+		case '_nempty':
+			query[logical][compareValue === false ? 'where' : 'whereNot'](key, '!=', '');
+			break;
+	}
+
+	// The following fields however, require a value to be run. If no value is passed, we
+	// ignore them. This allows easier use in GraphQL, where you wouldn't be able to
+	// conditionally build out your filter structure (#4471)
+	if (compareValue === undefined) {
+		return;
+	}
+
+	// Tip: when using a `[Type]` type in GraphQL, but don't provide the variable, it'll be
+	// reported as [undefined].
+	// We need to remove any undefined values, as they are useless
+	if (Array.isArray(compareValue)) {
+		compareValue = compareValue.filter((val) => val !== undefined);
+	}
+
+	switch (operator) {
+		case '_eq':
+			query[logical].where({ [key]: compareValue });
+			break;
+		case '_neq':
+			query[logical].whereNot({ [key]: compareValue });
+			break;
+		case '_contains':
+			query[logical].where(key, 'like', `%${compareValue}%`);
+			break;
+		case '_ncontains':
+			query[logical].whereNot(key, 'like', `%${compareValue}%`);
+			break;
+		case '_starts_with':
+			query[logical].where(key, 'like', `${compareValue}%`);
+			break;
+		case '_nstarts_with':
+			query[logical].whereNot(key, 'like', `${compareValue}%`);
+			break;
+		case '_ends_with':
+			query[logical].where(key, 'like', `%${compareValue}`);
+			break;
+		case '_nends_with':
+			query[logical].whereNot(key, 'like', `%${compareValue}`);
+			break;
+		case '_gt':
+			query[logical].where(key, '>', compareValue);
+			break;
+		case '_gte':
+			query[logical].where(key, '>=', compareValue);
+			break;
+		case '_lt':
+			query[logical].where(key, '<', compareValue);
+			break;
+		case '_lte':
+			query[logical].where(key, '<=', compareValue);
+			break;
+		case 'in':
+			query[logical].whereIn(key, toArray(compareValue));
+			break;
+		case 'nin':
+			query[logical].whereNotIn(key, toArray(compareValue));
+			break;
+		case '_between':
+			query[logical].whereBetween(key, toArray(compareValue) as [any, any]);
+			break;
+		case '_nbetween':
+			query[logical].whereNotBetween(key, toArray(compareValue) as [any, any]);
+			break;
+		case '_intersects':
+			query[logical].whereRaw(geometryHelper.intersects(key, compareValue));
+			break;
+		case '_nintersects':
+			query[logical].whereRaw(geometryHelper.nintersects(key, compareValue));
+			break;
+		case '_intersects_bbox':
+			query[logical].whereRaw(geometryHelper.intersects_bbox(key, compareValue));
+			break;
+		case '_nintersects_bbox':
+			query[logical].whereRaw(geometryHelper.nintersects_bbox(key, compareValue));
+			break;
+	}
 }

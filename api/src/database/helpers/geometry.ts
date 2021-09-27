@@ -5,10 +5,10 @@ import getDatabase from '..';
 
 let geometryHelper: KnexSpatial | undefined;
 
-export function getGeometryHelper(): KnexSpatial {
+export function getGeometryHelper(database?: Knex): KnexSpatial {
 	if (!geometryHelper) {
-		const db = getDatabase();
-		const client = db.client.config.client as string;
+		database = database ?? getDatabase();
+		const client = database.client.config.client as string;
 		const constructor = {
 			mysql: KnexSpatial_MySQL,
 			mariadb: KnexSpatial_MySQL,
@@ -22,7 +22,7 @@ export function getGeometryHelper(): KnexSpatial {
 		if (!constructor) {
 			throw new Error(`Geometry helper not implemented on ${client}.`);
 		}
-		geometryHelper = new constructor(db);
+		geometryHelper = new constructor(database);
 	}
 	return geometryHelper;
 }

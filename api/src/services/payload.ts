@@ -1,7 +1,7 @@
 import { format, parseISO } from 'date-fns';
 import Joi from 'joi';
 import { Knex } from 'knex';
-import { clone, cloneDeep, isObject, isPlainObject, omit, isNil } from 'lodash';
+import { clone, cloneDeep, isObject, isPlainObject, omit, isNil, identity } from 'lodash';
 import { v4 as uuidv4 } from 'uuid';
 import getDatabase from '../database';
 import { ForbiddenException, InvalidPayloadException } from '../exceptions';
@@ -9,21 +9,19 @@ import { AbstractServiceOptions, Item, PrimaryKey, Query, SchemaOverview, Altera
 import { Accountability } from '@directus/shared/types';
 import { toArray } from '@directus/shared/utils';
 import { ItemsService } from './items';
-import { isNativeGeometry } from '../utils/geometry';
 import { getGeometryHelper } from '../database/helpers/geometry';
 import { parse as wktToGeoJSON } from 'wellknown';
 import { generateHash } from '../utils/generate-hash';
 
 type Action = 'create' | 'read' | 'update';
 
+type Transformer = {
+	read?: (value: any) => any | Promise<any>;
+	create?: (value: any) => any | Promise<any>;
+	update?: (value: any) => any | Promise<any>;
+};
 type Transformers = {
-	[type: string]: (context: {
-		action: Action;
-		value: any;
-		payload: Partial<Item>;
-		accountability: Accountability | null;
-		specials: string[];
-	}) => Promise<any>;
+	[type: string]: Transformer;
 };
 
 /**
@@ -35,41 +33,60 @@ export class PayloadService {
 	knex: Knex;
 	collection: string;
 	schema: SchemaOverview;
+	geoUtil: ReturnType<typeof getGeometryHelper>;
 
 	constructor(collection: string, options: AbstractServiceOptions) {
 		this.accountability = options.accountability || null;
 		this.knex = options.knex || getDatabase();
 		this.collection = collection;
 		this.schema = options.schema;
+		this.geoUtil = getGeometryHelper(this.knex);
 
 		return this;
 	}
 
-	public transformers: Transformers = {
-		async hash({ action, value }) {
-			if (!value) return;
-			if (action === 'create' || action === 'update') {
-				return await generateHash(String(value));
-			}
-
-			return value;
+	public specialGenerators: Transformers = {
+		uuid: {
+			create: (value) => value ?? uuidv4(),
 		},
-		async uuid({ action, value }) {
-			if (action === 'create' && !value) {
-				return uuidv4();
-			}
-
-			return value;
+		'user-created': {
+			create: (_) => this.accountability?.user ?? null,
 		},
-		async boolean({ action, value }) {
-			if (action === 'read') {
-				return value === true || value === 1 || value === '1';
-			}
-
-			return value;
+		'user-updated': {
+			update: (_) => this.accountability?.user ?? null,
 		},
-		async json({ action, value }) {
-			if (action === 'read') {
+		'role-created': {
+			create: (_) => this.accountability?.role ?? null,
+		},
+		'role-updated': {
+			update: (_) => this.accountability?.role ?? null,
+		},
+		'date-created': {
+			create: (_) => this.knex.raw('CURRENT_TIMESTAMP'),
+		},
+		'date-updated': {
+			update: (_) => this.knex.raw('CURRENT_TIMESTAMP'),
+		},
+	};
+
+	public specialTransformers: Transformers = {
+		hash: {
+			create: (value) => generateHash(String(value)),
+			update: (value) => generateHash(String(value)),
+		},
+		conceal: {
+			read: (value) => (value ? '**********' : null),
+		},
+		boolean: {
+			read: (value) => value == true,
+		},
+		csv: {
+			read: (value) => toArray(value),
+			create: (value) => (Array.isArray(value) ? value.join(',') : value),
+			update: (value) => (Array.isArray(value) ? value.join(',') : value),
+		},
+		json: {
+			read: (value) => {
 				if (typeof value === 'string') {
 					try {
 						return JSON.parse(value);
@@ -77,45 +94,55 @@ export class PayloadService {
 						return value;
 					}
 				}
-			}
-
-			return value;
-		},
-		async conceal({ action, value }) {
-			if (action === 'read') return value ? '**********' : null;
-			return value;
-		},
-		async 'user-created'({ action, value, accountability }) {
-			if (action === 'create') return accountability?.user || null;
-			return value;
-		},
-		async 'user-updated'({ action, value, accountability }) {
-			if (action === 'update') return accountability?.user || null;
-			return value;
-		},
-		async 'role-created'({ action, value, accountability }) {
-			if (action === 'create') return accountability?.role || null;
-			return value;
-		},
-		async 'role-updated'({ action, value, accountability }) {
-			if (action === 'update') return accountability?.role || null;
-			return value;
-		},
-		async 'date-created'({ action, value }) {
-			if (action === 'create') return new Date();
-			return value;
-		},
-		async 'date-updated'({ action, value }) {
-			if (action === 'update') return new Date();
-			return value;
-		},
-		async csv({ action, value }) {
-			if (!value) return;
-			if (action === 'read' && Array.isArray(value) === false) return value.split(',');
-			if (Array.isArray(value)) return value.join(',');
-			return value;
+				return value;
+			},
 		},
 	};
+
+	public typeTransformers: Transformers = {
+		geometry: {
+			read: (value) => (typeof value === 'string' ? wktToGeoJSON(value) : value),
+			create: (value) => (!value ? value : this.geoUtil.fromGeoJSON(this.specialTransformers.json.read!(value))),
+			update: (value) => (!value ? value : this.geoUtil.fromGeoJSON(this.specialTransformers.json.read!(value))),
+		},
+		date: {
+			read: (value) => this.toDate(value)?.toISOString().slice(0, 10),
+			create: (value) => value.slice(0, 10),
+			update: (value) => value.slice(0, 10),
+		},
+		dateTime: {
+			read: (value) => this.toDate(value)?.toISOString().slice(0, 19),
+			create: (value) => this.toDate(value)?.toISOString().slice(0, 19),
+			update: (value) => this.toDate(value)?.toISOString().slice(0, 19),
+		},
+		timestamp: {
+			read: (value) => this.toDate(value)?.toISOString(),
+			create: (value) => this.toDate(value)?.toISOString(),
+			update: (value) => this.toDate(value)?.toISOString(),
+		},
+		time: {
+			read: (value) => this.toDate(value)?.toString().slice(11, 19),
+			create: (value) => this.toDate(value)?.toString().slice(11, 19),
+			update: (value) => this.toDate(value)?.toString().slice(11, 19),
+		},
+	};
+
+	toDate(value: number | string | Date): Date | null {
+		if (value === '0000-00-00') {
+			return null;
+		}
+		return new Date(value);
+	}
+
+	stringifyExceptRaw(value: any) {
+		if (!value || value.isRawInstance || value instanceof Date) {
+			return value;
+		}
+		if (typeof value === 'object') {
+			return JSON.stringify(value);
+		}
+		return value;
+	}
 
 	processValues(action: Action, payloads: Partial<Item>[]): Promise<Partial<Item>[]>;
 	processValues(action: Action, payload: Partial<Item>): Promise<Partial<Item>>;
@@ -125,210 +152,43 @@ export class PayloadService {
 	): Promise<Partial<Item> | Partial<Item>[]> {
 		const processedPayload = toArray(payload);
 
-		if (processedPayload.length === 0) return [];
-
-		const fieldsInPayload = Object.keys(processedPayload[0]);
-
-		let specialFieldsInCollection = Object.entries(this.schema.collections[this.collection].fields).filter(
-			([_name, field]) => field.special && field.special.length > 0
-		);
-
-		if (action === 'read') {
-			specialFieldsInCollection = specialFieldsInCollection.filter(([name]) => {
-				return fieldsInPayload.includes(name);
-			});
-		}
+		const fieldsData = this.schema.collections[this.collection].fields;
+		const fields = Object.keys(fieldsData);
 
 		await Promise.all(
-			processedPayload.map(async (record: any) => {
+			fields.map(async (field: string) => {
+				const type = fieldsData[field].type;
+				const special = fieldsData[field].special[0];
+				const generate = this.specialGenerators[special]?.[action];
+				const transformSpecial = this.specialTransformers[special]?.[action];
+				const transformType = this.typeTransformers[type]?.[action];
+
 				await Promise.all(
-					specialFieldsInCollection.map(async ([name, field]) => {
-						const newValue = await this.processField(field, record, action, this.accountability);
-						if (newValue !== undefined) record[name] = newValue;
+					processedPayload.map(async (record: any) => {
+						if (generate) {
+							record[field] = generate(record[field]);
+						}
+						if (record[field] == null) {
+							return;
+						}
+						if (transformSpecial) {
+							const value = transformSpecial(record[field]);
+							record[field] = value?.isRawInstance ? value : await value;
+						}
+						if (transformType) {
+							record[field] = transformType(record[field]);
+						}
+						if (action === 'read') {
+							record[field] = this.stringifyExceptRaw(record[field]);
+						}
 					})
 				);
 			})
 		);
-
-		this.processGeometries(processedPayload, action);
-		this.processDates(processedPayload, action);
-
-		if (['create', 'update'].includes(action)) {
-			processedPayload.forEach((record) => {
-				for (const [key, value] of Object.entries(record)) {
-					if (Array.isArray(value) || (typeof value === 'object' && !(value instanceof Date) && value !== null)) {
-						if (!value.isRawInstance) {
-							record[key] = JSON.stringify(value);
-						}
-					}
-				}
-			});
-		}
-
 		if (Array.isArray(payload)) {
 			return processedPayload;
 		}
-
 		return processedPayload[0];
-	}
-
-	async processField(
-		field: SchemaOverview['collections'][string]['fields'][string],
-		payload: Partial<Item>,
-		action: Action,
-		accountability: Accountability | null
-	): Promise<any> {
-		if (!field.special) return payload[field.field];
-		const fieldSpecials = field.special ? toArray(field.special) : [];
-
-		let value = clone(payload[field.field]);
-
-		for (const special of fieldSpecials) {
-			if (special in this.transformers) {
-				value = await this.transformers[special]({
-					action,
-					value,
-					payload,
-					accountability,
-					specials: fieldSpecials,
-				});
-			}
-		}
-
-		return value;
-	}
-
-	/**
-	 * Native geometries are stored in custom binary format. We need to insert them with
-	 * the function st_geomfromtext. For this to work, that function call must not be
-	 * escaped. It's therefore placed as a Knex.Raw object in the payload. Thus the need
-	 * to check if the value is a raw instance before stringifying it in the next step.
-	 */
-	processGeometries<T extends Partial<Record<string, any>>[]>(payloads: T, action: Action): T {
-		const helper = getGeometryHelper();
-
-		const process =
-			action == 'read'
-				? (value: any) => {
-						if (typeof value === 'string') return wktToGeoJSON(value);
-				  }
-				: (value: any) => helper.fromGeoJSON(typeof value == 'string' ? JSON.parse(value) : value);
-
-		const fieldsInCollection = Object.entries(this.schema.collections[this.collection].fields);
-		const geometryColumns = fieldsInCollection.filter(([_, field]) => isNativeGeometry(field));
-
-		for (const [name] of geometryColumns) {
-			for (const payload of payloads) {
-				if (payload[name]) {
-					payload[name] = process(payload[name]);
-				}
-			}
-		}
-
-		return payloads;
-	}
-	/**
-	 * Knex returns `datetime` and `date` columns as Date.. This is wrong for date / datetime, as those
-	 * shouldn't return with time / timezone info respectively
-	 */
-	processDates(payloads: Partial<Record<string, any>>[], action: Action): Partial<Record<string, any>>[] {
-		const fieldsInCollection = Object.entries(this.schema.collections[this.collection].fields);
-
-		const dateColumns = fieldsInCollection.filter(([_name, field]) =>
-			['dateTime', 'date', 'timestamp'].includes(field.type)
-		);
-
-		const timeColumns = fieldsInCollection.filter(([_name, field]) => {
-			return field.type === 'time';
-		});
-
-		if (dateColumns.length === 0 && timeColumns.length === 0) return payloads;
-
-		for (const [name, dateColumn] of dateColumns) {
-			for (const payload of payloads) {
-				let value: number | string | Date = payload[name];
-
-				if (value === null || value === '0000-00-00') {
-					payload[name] = null;
-					continue;
-				}
-
-				if (!value) continue;
-
-				if (action === 'read') {
-					if (typeof value === 'number' || typeof value === 'string') {
-						value = new Date(value);
-					}
-
-					if (dateColumn.type === 'timestamp') {
-						const newValue = value.toISOString();
-						payload[name] = newValue;
-					}
-
-					if (dateColumn.type === 'dateTime') {
-						const year = String(value.getUTCFullYear());
-						const month = String(value.getUTCMonth() + 1).padStart(2, '0');
-						const date = String(value.getUTCDate()).padStart(2, '0');
-						const hours = String(value.getUTCHours()).padStart(2, '0');
-						const minutes = String(value.getUTCMinutes()).padStart(2, '0');
-						const seconds = String(value.getUTCSeconds()).padStart(2, '0');
-
-						const newValue = `${year}-${month}-${date}T${hours}:${minutes}:${seconds}`;
-						payload[name] = newValue;
-					}
-
-					if (dateColumn.type === 'date') {
-						const [year, month, day] = value.toISOString().substr(0, 10).split('-');
-
-						// Strip off the time / timezone information from a date-only value
-						const newValue = `${year}-${month}-${day}`;
-						payload[name] = newValue;
-					}
-				} else {
-					if (value instanceof Date === false && typeof value === 'string') {
-						if (dateColumn.type === 'date') {
-							const [date] = value.split('T');
-							const [year, month, day] = date.split('-');
-
-							payload[name] = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
-						}
-
-						if (dateColumn.type === 'dateTime') {
-							const [date, time] = value.split('T');
-							const [year, month, day] = date.split('-');
-							const [hours, minutes, seconds] = time.substring(0, 8).split(':');
-
-							payload[name] = new Date(
-								Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hours), Number(minutes), Number(seconds))
-							);
-						}
-
-						if (dateColumn.type === 'timestamp') {
-							const newValue = parseISO(value);
-							payload[name] = newValue;
-						}
-					}
-				}
-			}
-		}
-
-		/**
-		 * Some DB drivers (MS SQL f.e.) return time values as Date objects. For consistencies sake,
-		 * we'll abstract those back to hh:mm:ss
-		 */
-		for (const [name] of timeColumns) {
-			for (const payload of payloads) {
-				const value = payload[name];
-
-				if (!value) continue;
-
-				if (action === 'read') {
-					if (value instanceof Date) payload[name] = format(value, 'HH:mm:ss');
-				}
-			}
-		}
-
-		return payloads;
 	}
 
 	/**
