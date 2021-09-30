@@ -91,11 +91,10 @@ export default defineComponent({
 
 					const content = cm.getValue();
 
+					if (content.length === 0) {
+						return emit('input', null);
+					}
 					if (props.type === 'json') {
-						if (content.length === 0) {
-							return emit('input', null);
-						}
-
 						try {
 							emit('input', JSON.parse(content));
 						} catch {
