@@ -259,7 +259,7 @@ export class ItemsService<Item extends AnyItem = AnyItem> implements AbstractSer
 			// By setting the permissions action, you can read items using the permissions for another
 			// operation's permissions. This is used to dynamically check if you have update/delete
 			// access to (a) certain item(s)
-			action: opts?.permissionsAction || 'read',
+			action: opts?.permissionsAction,
 			knex: this.knex,
 		});
 
@@ -295,21 +295,10 @@ export class ItemsService<Item extends AnyItem = AnyItem> implements AbstractSer
 	 * Get single item by primary key
 	 */
 	async readOne(key: PrimaryKey, query?: Query, opts?: QueryOptions): Promise<Item> {
-		query = query ?? {};
-
 		const primaryKeyField = this.schema.collections[this.collection].primary;
+		query = merge(query, { filter: { [primaryKeyField]: { _eq: key } } });
 
-		const queryWithKey = {
-			...query,
-			filter: {
-				...(query.filter || {}),
-				[primaryKeyField]: {
-					_eq: key,
-				},
-			},
-		};
-
-		const results = await this.readByQuery(queryWithKey, opts);
+		const results = await this.readByQuery(query, opts);
 
 		if (results.length === 0) {
 			throw new ForbiddenException();
@@ -322,25 +311,10 @@ export class ItemsService<Item extends AnyItem = AnyItem> implements AbstractSer
 	 * Get multiple items by primary keys
 	 */
 	async readMany(keys: PrimaryKey[], query?: Query, opts?: QueryOptions): Promise<Item[]> {
-		query = query ?? {};
-
 		const primaryKeyField = this.schema.collections[this.collection].primary;
+		query = merge(query, { filter: { [primaryKeyField]: { _in: keys } } });
 
-		const queryWithKeys = {
-			...query,
-			filter: {
-				_and: [
-					query.filter || {},
-					{
-						[primaryKeyField]: {
-							_in: keys,
-						},
-					},
-				],
-			},
-		};
-
-		const results = await this.readByQuery(queryWithKeys, opts);
+		const results = await this.readByQuery(query, opts);
 
 		return results;
 	}
