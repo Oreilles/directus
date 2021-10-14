@@ -1,6 +1,6 @@
 import { usePresetsStore, useUserStore } from '@/stores';
 import { Filter, Preset } from '@directus/shared/types';
-import { debounce, isEqual } from 'lodash';
+import { merge, debounce, isEqual } from 'lodash';
 import { computed, ComputedRef, ref, Ref, watch } from 'vue';
 
 type UsablePreset = {
@@ -92,15 +92,11 @@ export function usePreset(
 		},
 		set(val) {
 			if (!localPreset.value.layout) return null;
-
-			localPreset.value = {
-				...localPreset.value,
+			localPreset.value = merge({}, localPreset.value, {
 				layout_options: {
-					...localPreset.value.layout_options,
 					[localPreset.value.layout]: val,
 				},
-			};
-
+			});
 			handleChanges();
 		},
 	});
@@ -112,14 +108,11 @@ export function usePreset(
 		},
 		set(val) {
 			if (!localPreset.value.layout) return null;
-			localPreset.value = {
-				...localPreset.value,
+			localPreset.value = merge({}, localPreset.value, {
 				layout_query: {
-					...localPreset.value.layout_query,
 					[localPreset.value.layout]: val,
 				},
-			};
-
+			});
 			handleChanges();
 		},
 	});
@@ -128,12 +121,8 @@ export function usePreset(
 		get() {
 			return localPreset.value.layout || 'tabular';
 		},
-		set(val) {
-			localPreset.value = {
-				...localPreset.value,
-				layout: val,
-			};
-
+		set(layout) {
+			localPreset.value = merge({}, localPreset.value, { layout });
 			handleChanges();
 		},
 	});
@@ -142,12 +131,8 @@ export function usePreset(
 		get() {
 			return localPreset.value.filter ?? null;
 		},
-		set(val: Filter | null) {
-			localPreset.value = {
-				...localPreset.value,
-				filter: val,
-			};
-
+		set(search) {
+			localPreset.value = merge({}, localPreset.value, { search });
 			handleChanges();
 		},
 	});
@@ -156,12 +141,8 @@ export function usePreset(
 		get() {
 			return localPreset.value.refresh_interval || null;
 		},
-		set(val) {
-			localPreset.value = {
-				...localPreset.value,
-				refresh_interval: val,
-			};
-
+		set(refresh_interval) {
+			localPreset.value = merge({}, localPreset.value, { refresh_interval });
 			handleChanges();
 		},
 	});
@@ -170,12 +151,8 @@ export function usePreset(
 		get() {
 			return localPreset.value.search || null;
 		},
-		set(val) {
-			localPreset.value = {
-				...localPreset.value,
-				search: val,
-			};
-
+		set(search) {
+			localPreset.value = merge({}, localPreset.value, { search });
 			handleChanges();
 		},
 	});
@@ -184,13 +161,8 @@ export function usePreset(
 		get() {
 			return localPreset.value?.bookmark || null;
 		},
-		set(newTitle: string | null) {
-			localPreset.value = {
-				...localPreset.value,
-				bookmark: newTitle,
-			};
-
-			// This'll save immediately
+		set(bookmark) {
+			localPreset.value = merge({}, localPreset.value, { bookmark });
 			savePreset();
 		},
 	});
